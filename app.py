@@ -2,6 +2,7 @@ import streamlit as st
 from predict import FakeNewsPredictor  # Your local model class
 import google.generativeai as genai  # For the Gemini API re-check
 import os
+import json  # <-- ADDED for parsing JSON responses
 
 # --- Configuration ---
 
@@ -55,11 +56,8 @@ def recheck_with_gemini(text_to_check):
     """
     Calls the Gemini API to classify the text as 'Real' or 'Fake'.
     """
-    # Use the corrected, stable model name
     LLM_MODEL = "gemini-2.5-flash" 
     
-    # Define safety settings to be permissive (BLOCK_NONE)
-    # This is the fix for the 'finish_reason: 2' (SAFETY) error
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -68,19 +66,25 @@ def recheck_with_gemini(text_to_check):
     ]
 
     try:
-        # We configure the model with safety settings and the system prompt
+        # --- FIX 1: Updated system prompt to request JSON ---
+        system_prompt = (
+            "You are an expert fact-checker. Analyze the following news text. "
+            "Classify it as 'Real' or 'Fake'. "
+            "Respond *only* with a valid JSON object in the following format: "
+            '{"classification": "Real"} or {"classification": "Fake"}'
+        )
+        
+        # --- FIX 2: Updated generation config to force JSON output ---
+        generation_config = genai.GenerationConfig(
+            temperature=0.0,
+            response_mime_type="application/json" # Force JSON output
+        )
+
         model = genai.GenerativeModel(
             LLM_MODEL,
-            system_instruction=(
-                "You are an expert fact-checker. Analyze the following news text. "
-                "Classify it as 'Real' (trustworthy, factual) or 'Fake' (misinformation, clickbait, fabricated). "
-                "Respond with only the single word: Real or Fake. Do not provide any explanation."
-            ),
-            generation_config=genai.GenerationConfig(
-                max_output_tokens=50,  # <-- FIX 1: Increased from 5 to 50
-                temperature=0.0       # We want a deterministic, confident answer
-            ),
-            safety_settings=safety_settings  # Apply the permissive safety settings
+            system_instruction=system_prompt,
+            generation_config=generation_config,
+            safety_settings=safety_settings
         )
         
         user_prompt = f"News Text: \"{text_to_check}\""
@@ -88,39 +92,44 @@ def recheck_with_gemini(text_to_check):
         response = model.generate_content(user_prompt)
         
         # --- Robust Check ---
-        # Instead of calling response.text, check if 'parts' exist.
-        # If 'parts' is empty, the response was blocked for some reason.
         if not response.parts:
-            # --- FIX 2: Improved Error Reporting ---
             finish_reason = "UNKNOWN"
             if response.candidates and response.candidates[0].finish_reason:
-                finish_reason = response.candidates[0].finish_reason.name # e.g., "SAFETY", "MAX_TOKENS"
+                finish_reason = response.candidates[0].finish_reason.name 
             
             st.error(f"Gemini API Error: Response was empty. Finish Reason: {finish_reason}")
             
-            # Provide the correct guidance based on the error
             if finish_reason == "MAX_TOKENS":
                 st.warning("The model's response was cut off. This may be a temporary API issue.")
             elif finish_reason == "SAFETY":
-                st.info("The input text likely contains sensitive content that triggered Google's safety filters, even with permissive settings.")
+                st.info("The input text likely contains sensitive content that triggered Google's safety filters.")
             else:
                  st.info(f"The model stopped for an unexpected reason: {finish_reason}")
             
             return None
 
-        # If we passed the check, it's safe to access .text
-        llm_answer = response.text.strip()
+        # --- FIX 3: Parse the JSON response ---
+        llm_answer_text = response.text.strip()
         
-        # Clean the answer just in case
-        if "real" in llm_answer.lower():
+        # Clean the text in case the model adds markdown ````json ... ```
+        if llm_answer_text.startswith("```json"):
+            llm_answer_text = llm_answer_text[7:-3].strip()
+
+        parsed_json = json.loads(llm_answer_text)
+        classification = parsed_json.get("classification")
+
+        if classification == "Real":
             return "Real"
-        elif "fake" in llm_answer.lower():
+        elif classification == "Fake":
             return "Fake"
         else:
-            # The LLM failed to follow instructions
-            st.warning(f"LLM gave an unexpected response: {llm_answer}")
+            st.warning(f"LLM gave unexpected JSON: {llm_answer_text}")
             return None
             
+    except json.JSONDecodeError:
+        # Catch errors if the model fails to return valid JSON
+        st.error(f"Gemini API Error: Failed to decode JSON response. Got: {llm_answer_text}")
+        return None
     except Exception as e:
         # General error catch
         st.error(f"Gemini API Error: {str(e)}")
