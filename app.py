@@ -26,7 +26,11 @@ if not api_key:
     st.stop()
 
 # Configure the Gemini client
-genai.configure(api_key=api_key)
+try:
+    genai.configure(api_key=api_key)
+except Exception as e:
+    st.error(f"Error configuring Gemini API: {e}")
+    st.stop()
 
 # --- Model Loading ---
 
@@ -51,29 +55,52 @@ def recheck_with_gemini(text_to_check):
     """
     Calls the Gemini API to classify the text as 'Real' or 'Fake'.
     """
-    # Use a fast and powerful Gemini model"
-    
+    # Use the corrected, stable model name
     LLM_MODEL = "gemini-2.5-flash" 
     
-    # We configure the model with safety settings and the system prompt
-    # Gemini's 'system_instruction' is similar to OpenAI's 'system' role
-    model = genai.GenerativeModel(
-        LLM_MODEL,
-        system_instruction=(
-            "You are an expert fact-checker. Analyze the following news text. "
-            "Classify it as 'Real' (trustworthy, factual) or 'Fake' (misinformation, clickbait, fabricated). "
-            "Respond with only the single word: Real or Fake. Do not provide any explanation."
-        ),
-        generation_config=genai.GenerationConfig(
-            max_output_tokens=5,  # We only want one word
-            temperature=0.0       # We want a deterministic, confident answer
-        )
-    )
-    
-    user_prompt = f"News Text: \"{text_to_check}\""
-    
+    # Define safety settings to be permissive (BLOCK_NONE)
+    # This is the fix for the 'finish_reason: 2' (SAFETY) error
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+
     try:
+        # We configure the model with safety settings and the system prompt
+        model = genai.GenerativeModel(
+            LLM_MODEL,
+            system_instruction=(
+                "You are an expert fact-checker. Analyze the following news text. "
+                "Classify it as 'Real' (trustworthy, factual) or 'Fake' (misinformation, clickbait, fabricated). "
+                "Respond with only the single word: Real or Fake. Do not provide any explanation."
+            ),
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=5,  # We only want one word
+                temperature=0.0       # We want a deterministic, confident answer
+            ),
+            safety_settings=safety_settings  # Apply the permissive safety settings
+        )
+        
+        user_prompt = f"News Text: \"{text_to_check}\""
+        
         response = model.generate_content(user_prompt)
+        
+        # --- Robust Check ---
+        # Instead of calling response.text, check if 'parts' exist.
+        # If 'parts' is empty, the response was blocked.
+        if not response.parts:
+            # Provide a more detailed error message
+            finish_reason = "UNKNOWN"
+            if response.candidates and response.candidates[0].finish_reason:
+                finish_reason = response.candidates[0].finish_reason.name
+            
+            st.error(f"Gemini API Error: Response was blocked. Finish Reason: {finish_reason}")
+            st.info("This can happen if the input text contains content that Google's API blocks, even with permissive settings.")
+            return None
+
+        # If we passed the check, it's safe to access .text
         llm_answer = response.text.strip()
         
         # Clean the answer just in case
@@ -87,6 +114,7 @@ def recheck_with_gemini(text_to_check):
             return None
             
     except Exception as e:
+        # General error catch
         st.error(f"Gemini API Error: {str(e)}")
         return None
 
