@@ -1,32 +1,35 @@
 import streamlit as st
 from predict import FakeNewsPredictor  # Your local model class
-from openrouter import Client         # For the API re-check
+from openai import OpenAI            # For the DeepSeek API re-check
 import os
 
 # --- Configuration ---
 
 # Set the page title
 st.set_page_config(page_title="Fake News Detector", layout="wide")
-st.title("📰 Fake News Detector (with LLM Verification)")
-st.write("Enter text to check. The app will first use a local ML model, then verify the result with a powerful LLM via OpenRouter.")
+st.title("📰 Fake News Detector (with DeepSeek Verification)")
+st.write("Enter text to check. The app will first use a local ML model, then verify the result with the DeepSeek LLM.")
 
 # --- Load API Key ---
 
 # Try to get the key from Streamlit secrets (for deployment)
-if 'OPENROUTER_API_KEY' in st.secrets:
-    api_key = st.secrets['OPENROUTER_API_KEY']
+if 'DEEPSEEK_API_KEY' in st.secrets:
+    api_key = st.secrets['DEEPSEEK_API_KEY']
 else:
     # Fallback for local testing (set it as an environment variable)
-    st.warning("OPENROUTER_API_KEY not found in Streamlit secrets. Falling back to environment variable.")
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    st.warning("DEEPSEEK_API_KEY not found in Streamlit secrets. Falling back to environment variable.")
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
 
 # If no key is found, stop the app
 if not api_key:
-    st.error("🚨 OPENROUTER_API_KEY is not set. Please add it to your Streamlit secrets or environment variables.")
+    st.error("🚨 DEEPSEEK_API_KEY is not set. Please add it to your Streamlit secrets or environment variables.")
     st.stop()
 
-# Initialize the OpenRouter client
-client = Client(api_key=api_key)
+# Initialize the DeepSeek client (using OpenAI's client)
+client = OpenAI(
+    api_key=api_key,
+    base_url="https://api.deepseek.com"
+)
 
 # --- Model Loading ---
 
@@ -43,16 +46,16 @@ def load_model():
 # Load your local model
 predictor = load_model()
 
-# --- OpenRouter Function ---
+# --- DeepSeek Function ---
 
 # Cache the API call to avoid re-running on the same text
 @st.cache_data(ttl=3600)
-def recheck_with_openrouter(text_to_check):
+def recheck_with_deepseek(text_to_check):
     """
-    Calls the OpenRouter API to classify the text as 'Real' or 'Fake'.
+    Calls the DeepSeek API to classify the text as 'Real' or 'Fake'.
     """
-    # We will use a reliable and fast model
-    LLM_MODEL = "meta-llama/llama-3-8b-instruct" 
+    # Use a powerful and cost-effective DeepSeek model
+    LLM_MODEL = "deepseek-chat" 
     
     system_prompt = (
         "You are an expert fact-checker. Analyze the following news text. "
@@ -85,7 +88,7 @@ def recheck_with_openrouter(text_to_check):
             return None
             
     except Exception as e:
-        st.error(f"OpenRouter API Error: {str(e)}")
+        st.error(f"DeepSeek API Error: {str(e)}")
         return None
 
 # --- Streamlit UI ---
@@ -118,10 +121,10 @@ if predictor:
             
             st.divider()
 
-            # --- Step 2: Recheck with OpenRouter ---
-            st.write("**2. OpenRouter LLM Verification:**")
-            with st.spinner("Verifying with OpenRouter LLM (Llama 3)..."):
-                llm_prediction = recheck_with_openrouter(user_text)
+            # --- Step 2: Recheck with DeepSeek ---
+            st.write("**2. DeepSeek LLM Verification:**")
+            with st.spinner("Verifying with DeepSeek LLM..."):
+                llm_prediction = recheck_with_deepseek(user_text)
 
             if llm_prediction:
                 if llm_prediction == 'Fake':
@@ -138,11 +141,11 @@ if predictor:
                 else:
                     st.warning(f"⚠️ **Prediction Conflict!**")
                     st.write(f"- Your local model said: **{local_prediction}**")
-                    st.write(f"- OpenRouter LLM said: **{llm_prediction}**")
+                    st.write(f"- DeepSeek LLM said: **{llm_prediction}**")
                     st.info(f"The LLM's answer (**{llm_prediction}**) is often more reliable. Please use this as the final answer.")
             
             else:
-                st.error("Could not get a verification response from OpenRouter.")
+                st.error("Could not get a verification response from DeepSeek.")
 
 else:
     st.error("Model could not be loaded. The application cannot start.")
