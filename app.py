@@ -51,8 +51,9 @@ def recheck_with_gemini(text_to_check):
     """
     Calls the Gemini API to classify the text as 'Real' or 'Fake'.
     """
-    # Use a fast and powerful Gemini model
-    LLM_MODEL = "gemini-1.5-flash" 
+    # Use a fast and powerful Gemini model"
+    
+    LLM_MODEL = "gemini-2.5-flash" 
     
     # We configure the model with safety settings and the system prompt
     # Gemini's 'system_instruction' is similar to OpenAI's 'system' role
