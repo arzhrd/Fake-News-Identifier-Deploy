@@ -77,7 +77,7 @@ def recheck_with_gemini(text_to_check):
                 "Respond with only the single word: Real or Fake. Do not provide any explanation."
             ),
             generation_config=genai.GenerationConfig(
-                max_output_tokens=5,  # We only want one word
+                max_output_tokens=50,  # <-- FIX 1: Increased from 5 to 50
                 temperature=0.0       # We want a deterministic, confident answer
             ),
             safety_settings=safety_settings  # Apply the permissive safety settings
@@ -89,15 +89,23 @@ def recheck_with_gemini(text_to_check):
         
         # --- Robust Check ---
         # Instead of calling response.text, check if 'parts' exist.
-        # If 'parts' is empty, the response was blocked.
+        # If 'parts' is empty, the response was blocked for some reason.
         if not response.parts:
-            # Provide a more detailed error message
+            # --- FIX 2: Improved Error Reporting ---
             finish_reason = "UNKNOWN"
             if response.candidates and response.candidates[0].finish_reason:
-                finish_reason = response.candidates[0].finish_reason.name
+                finish_reason = response.candidates[0].finish_reason.name # e.g., "SAFETY", "MAX_TOKENS"
             
-            st.error(f"Gemini API Error: Response was blocked. Finish Reason: {finish_reason}")
-            st.info("This can happen if the input text contains content that Google's API blocks, even with permissive settings.")
+            st.error(f"Gemini API Error: Response was empty. Finish Reason: {finish_reason}")
+            
+            # Provide the correct guidance based on the error
+            if finish_reason == "MAX_TOKENS":
+                st.warning("The model's response was cut off. This may be a temporary API issue.")
+            elif finish_reason == "SAFETY":
+                st.info("The input text likely contains sensitive content that triggered Google's safety filters, even with permissive settings.")
+            else:
+                 st.info(f"The model stopped for an unexpected reason: {finish_reason}")
+            
             return None
 
         # If we passed the check, it's safe to access .text
@@ -176,3 +184,4 @@ if predictor:
 
 else:
     st.error("Model could not be loaded. The application cannot start.")
+
