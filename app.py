@@ -50,7 +50,7 @@ predictor = load_model()
 
 # Cache the API call to avoid re-running on the same text
 @st.cache_data(ttl=3600)
-def recheck_with_openrouter_deepseek(text_to_check):
+def recheck_with_openrouter_deepseek(text_to_check): # Function definition uses 'text_to_check'
     """
     Calls the OpenRouter API (using DeepSeek) to classify the text as 'Real' or 'Fake'.
     """
@@ -69,7 +69,6 @@ def recheck_with_openrouter_deepseek(text_to_check):
         response = client.chat.completions.create(
             extra_headers={
               # Optional headers for OpenRouter rankings
-              # Make sure to replace this with your actual app URL once deployed!
               "HTTP-Referer": "https://fake-news-identifier-deploy-qw8mabrh2u7eif4uyxrdnw.streamlit.app/", 
               "X-Title": "Fake News Detector" 
             },
@@ -100,7 +99,7 @@ def recheck_with_openrouter_deepseek(text_to_check):
 # --- Streamlit UI ---
 
 if predictor:
-    user_text = st.text_area("Enter News Text:", "", height=200)
+    user_text = st.text_area("Enter News Text:", "", height=200) # 'user_text' is defined here
 
     if st.button("Analyze and Verify News"):
         if not user_text.strip():
@@ -110,7 +109,7 @@ if predictor:
             
             # --- Step 1: Get Local Model Prediction ---
             with st.spinner("Analyzing with local model..."):
-                local_result = predictor.predict_single_news(user_text)
+                local_result = predictor.predict_single_news(user_text) # We pass 'user_text' here
             
             if local_result.get('error'):
                 st.error(f"Local model error: {local_result['error']}")
@@ -130,7 +129,9 @@ if predictor:
             # --- Step 2: Recheck with OpenRouter/DeepSeek ---
             st.write("**2. OpenRouter (DeepSeek) LLM Verification:**")
             with st.spinner("Verifying with OpenRouter/DeepSeek..."):
-                llm_prediction = recheck_with_openrouter_deepseek(text_to_check) # Call the updated function
+                
+                # ******** THIS IS THE CORRECTED LINE ********
+                llm_prediction = recheck_with_openrouter_deepseek(user_text) # We must pass 'user_text' here too
 
             if llm_prediction:
                 if llm_prediction == 'Fake':
