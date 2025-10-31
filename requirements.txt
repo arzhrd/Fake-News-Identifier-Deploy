@@ -2,4 +2,4 @@ streamlit
 pandas
 nltk
 scikit-learn
-openai
+google-generativeai
