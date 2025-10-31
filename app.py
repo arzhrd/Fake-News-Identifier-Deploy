@@ -117,7 +117,7 @@ def recheck_with_gemini(text_to_check):
         return None
     except Exception as e:
         # Catch other potential errors
-        st.error(f"Gemini API Error: {str(e)}")
+        st.error(f"GemDini API Error: {str(e)}")
         return None
 
 # --- Streamlit UI ---
@@ -184,7 +184,8 @@ if predictor:
 
             # Display Final Verdict (will always be "Agree")
             st.subheader("Final Verdict")
-            st.success(f"✅ **Models Agree:** The news is likely **{gemimni_prediction}**.")
+            # --- THIS IS THE CORRECTED LINE ---
+            st.success(f"✅ **Models Agree:** The news is likely **{gemini_prediction}**.")
 
 else:
     st.error("Model could not be loaded. The application cannot start.")
