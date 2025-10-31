@@ -62,11 +62,12 @@ def recheck_with_gemini(text_to_check):
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
     
-    # System prompt forcing JSON output
+    # System prompt forcing JSON output, now even stricter
     system_prompt = (
-        "You are an expert fact-checker. Analyze the following news text. "
-        "Classify it as 'Real' (trustworthy, factual) or 'Fake' (misinformation, clickbait, fabricated). "
-        "Respond ONLY with a JSON object in the format: {\"classification\": \"<result>\"} where <result> is 'Real' or 'Fake'."
+        "You are a JSON API. You only respond with JSON. "
+        "Do not write any explanatory text. Do not use markdown `json` tags. "
+        "Analyze the news text. "
+        "Respond ONLY with this JSON format: {\"classification\": \"<result>\"} where <result> is 'Real' or 'Fake'."
     )
     
     try:
@@ -74,7 +75,7 @@ def recheck_with_gemini(text_to_check):
             LLM_MODEL,
             system_instruction=system_prompt,
             generation_config=genai.GenerationConfig(
-                max_output_tokens=50,  # Increased token limit
+                max_output_tokens=150,  # Increased token limit again as a safeguard
                 temperature=0.0,
                 response_mime_type="application/json" # Enforce JSON output
             ),
@@ -86,9 +87,19 @@ def recheck_with_gemini(text_to_check):
 
         # Check for empty response or blocks
         if not response.parts:
-            finish_reason = response.candidates[0].finish_reason.name if response.candidates else "UNKNOWN"
+            # Get the actual finish reason
+            finish_reason = "UNKNOWN"
+            if response.candidates:
+                finish_reason = response.candidates[0].finish_reason.name
+            
+            # Display the *correct* error message
             st.error(f"Gemini API Error: Response was empty. Finish Reason: {finish_reason}")
-            st.info("This can happen if the input text contains content that Google's API blocks, even with permissive settings.")
+            if finish_reason == "MAX_TOKENS":
+                st.info("The model's response was cut off. This may be a temporary API issue.")
+            elif finish_reason == "SAFETY":
+                 st.info("This can happen if the input text contains content that Google's API blocks.")
+            else:
+                st.info(f"An unknown API error occurred. Finish Reason: {finish_reason}")
             return None
         
         # Parse the JSON response
@@ -173,7 +184,7 @@ if predictor:
 
             # Display Final Verdict (will always be "Agree")
             st.subheader("Final Verdict")
-            st.success(f"✅ **Models Agree:** The news is likely **{gemini_prediction}**.")
+            st.success(f"✅ **Models Agree:** The news is likely **{gemimni_prediction}**.")
 
 else:
     st.error("Model could not be loaded. The application cannot start.")
