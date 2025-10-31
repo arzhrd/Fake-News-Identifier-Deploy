@@ -1,34 +1,34 @@
 import streamlit as st
 from predict import FakeNewsPredictor  # Your local model class
-from openai import OpenAI            # For the DeepSeek API re-check
+from openai import OpenAI            # Using OpenAI client for OpenRouter
 import os
 
 # --- Configuration ---
 
 # Set the page title
 st.set_page_config(page_title="Fake News Detector", layout="wide")
-st.title("📰 Fake News Detector (with DeepSeek Verification)")
-st.write("Enter text to check. The app will first use a local ML model, then verify the result with the DeepSeek LLM.")
+st.title("📰 Fake News Detector (with OpenRouter/DeepSeek Verification)")
+st.write("Enter text to check. The app will first use a local ML model, then verify the result with DeepSeek via OpenRouter.")
 
 # --- Load API Key ---
 
 # Try to get the key from Streamlit secrets (for deployment)
-if 'DEEPSEEK_API_KEY' in st.secrets:
-    api_key = st.secrets['DEEPSEEK_API_KEY']
+if 'OPENROUTER_API_KEY' in st.secrets:
+    api_key = st.secrets['OPENROUTER_API_KEY']
 else:
     # Fallback for local testing (set it as an environment variable)
-    st.warning("DEEPSEEK_API_KEY not found in Streamlit secrets. Falling back to environment variable.")
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    st.warning("OPENROUTER_API_KEY not found in Streamlit secrets. Falling back to environment variable.")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
 
 # If no key is found, stop the app
 if not api_key:
-    st.error("🚨 DEEPSEEK_API_KEY is not set. Please add it to your Streamlit secrets or environment variables.")
+    st.error("🚨 OPENROUTER_API_KEY is not set. Please add it to your Streamlit secrets or environment variables.")
     st.stop()
 
-# Initialize the DeepSeek client (using OpenAI's client)
+# Initialize the OpenRouter client (using OpenAI's client)
 client = OpenAI(
     api_key=api_key,
-    base_url="https://api.deepseek.com"
+    base_url="https://openrouter.ai/api/v1"
 )
 
 # --- Model Loading ---
@@ -46,16 +46,16 @@ def load_model():
 # Load your local model
 predictor = load_model()
 
-# --- DeepSeek Function ---
+# --- OpenRouter/DeepSeek Function ---
 
 # Cache the API call to avoid re-running on the same text
 @st.cache_data(ttl=3600)
-def recheck_with_deepseek(text_to_check):
+def recheck_with_openrouter_deepseek(text_to_check):
     """
-    Calls the DeepSeek API to classify the text as 'Real' or 'Fake'.
+    Calls the OpenRouter API (using DeepSeek) to classify the text as 'Real' or 'Fake'.
     """
-    # Use a powerful and cost-effective DeepSeek model
-    LLM_MODEL = "deepseek-chat" 
+    # Use the free DeepSeek model via OpenRouter as per your reference
+    LLM_MODEL = "deepseek/deepseek-chat-v3.1:free" 
     
     system_prompt = (
         "You are an expert fact-checker. Analyze the following news text. "
@@ -67,6 +67,12 @@ def recheck_with_deepseek(text_to_check):
     
     try:
         response = client.chat.completions.create(
+            extra_headers={
+              # Optional headers for OpenRouter rankings
+              # Make sure to replace this with your actual app URL once deployed!
+              "HTTP-Referer": "https://fake-news-identifier-deploy-qw8mabrh2u7eif4uyxrdnw.streamlit.app/", 
+              "X-Title": "Fake News Detector" 
+            },
             model=LLM_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -88,7 +94,7 @@ def recheck_with_deepseek(text_to_check):
             return None
             
     except Exception as e:
-        st.error(f"DeepSeek API Error: {str(e)}")
+        st.error(f"OpenRouter API Error: {str(e)}")
         return None
 
 # --- Streamlit UI ---
@@ -121,10 +127,10 @@ if predictor:
             
             st.divider()
 
-            # --- Step 2: Recheck with DeepSeek ---
-            st.write("**2. DeepSeek LLM Verification:**")
-            with st.spinner("Verifying with DeepSeek LLM..."):
-                llm_prediction = recheck_with_deepseek(user_text)
+            # --- Step 2: Recheck with OpenRouter/DeepSeek ---
+            st.write("**2. OpenRouter (DeepSeek) LLM Verification:**")
+            with st.spinner("Verifying with OpenRouter/DeepSeek..."):
+                llm_prediction = recheck_with_openrouter_deepseek(text_to_check) # Call the updated function
 
             if llm_prediction:
                 if llm_prediction == 'Fake':
@@ -141,11 +147,11 @@ if predictor:
                 else:
                     st.warning(f"⚠️ **Prediction Conflict!**")
                     st.write(f"- Your local model said: **{local_prediction}**")
-                    st.write(f"- DeepSeek LLM said: **{llm_prediction}**")
+                    st.write(f"- OpenRouter/DeepSeek LLM said: **{llm_prediction}**")
                     st.info(f"The LLM's answer (**{llm_prediction}**) is often more reliable. Please use this as the final answer.")
             
             else:
-                st.error("Could not get a verification response from DeepSeek.")
+                st.error("Could not get a verification response from OpenRouter.")
 
 else:
     st.error("Model could not be loaded. The application cannot start.")
